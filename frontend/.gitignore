@@ -33,6 +33,11 @@ __pycache__/
 *$py.class
 *.sqlite3
 
+__pycache__/
+*.py[cod]
+.env
+.idea/
+*.http
 # Node / React
 node_modules/
 dist/
