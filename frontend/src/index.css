@@ -109,3 +109,7 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+.option-btn:hover:not(:disabled) {
+  border-color: #38bdf8 !important;
+  background-color: #475569 !important;
+}

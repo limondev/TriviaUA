@@ -1,10 +1,10 @@
-# app/main.py
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers.auth import router as auth_router
 from app.routers.game_ws import router as game_ws_router  # Імпортуємо
 from app.core.database import engine, Base
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     async with engine.begin() as conn:

@@ -29,7 +29,16 @@ function App() {
     setNumberAnswer('');
   }, [currentQuestionId]);
 
-// Обробник Входу / Реєстрації
+  // Обробник кліку по області мапи (оголошуємо ТУТ, у тілі компонента!)
+  const handleRegionClick = (regionId: string) => {
+    if (gameState?.status === 'CLAIM_TERRITORY') {
+      sendMessage('claim_region', { region_id: regionId });
+    } else {
+      console.log(`Зараз не фаза захоплення. Клікнули на: ${regionId}`);
+    }
+  };
+
+  // Обробник Входу / Реєстрації
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
@@ -65,7 +74,7 @@ function App() {
         setAuthError(err.message || 'Помилка при реєстрації');
       }
     } else {
-      // 2. ВХІД (ТЕПЕР ТАКОЖ ЧИСТИЙ JSON!)
+      // 2. ВХІД (JSON)
       try {
         const response = await fetch('http://127.0.0.1:8000/auth/login', {
           method: 'POST',
@@ -89,6 +98,7 @@ function App() {
       }
     }
   };
+
   const handleLogout = () => {
     localStorage.removeItem('access_token');
     setToken(null);
@@ -213,7 +223,6 @@ function App() {
             {authMode === 'login' ? 'Увійти' : 'Зареєструватися'}
           </button>
 
-          {/* Перемикач режимів */}
           <p style={{ textAlign: 'center', fontSize: '13px', color: '#94a3b8', margin: '5px 0 0 0' }}>
             {authMode === 'login' ? 'Немає акаунту? ' : 'Вже є акаунт? '}
             <span
@@ -232,233 +241,248 @@ function App() {
     );
   }
 
-  // --- ІГРОВИЙ ЕКРАН ---
+  // --- ІГРОВИЙ ЕКРАН (Full Screen Layout ala Triviador) ---
   return (
     <div style={{
       minHeight: '100vh',
       backgroundColor: '#0f172a',
       color: '#ffffff',
+      fontFamily: 'sans-serif',
       display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      fontFamily: 'sans-serif',
-      padding: '20px'
+      position: 'relative',
+      overflow: 'hidden'
     }}>
+
+      {/* 1. Мапа України - на весь екран по центру */}
       <div style={{
-        backgroundColor: '#1e293b',
-        padding: '30px',
-        borderRadius: '16px',
-        maxWidth: '500px',
+        position: 'absolute',
+        top: '10%',
+        left: '50%',
+        transform: 'translateX(-50%)',
         width: '100%',
-        boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-        border: '1px solid #334155'
+        height: '80%',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 1, // Нижче ніж інтерфейс
+        opacity: gameState ? 1 : 0.3
       }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '24px' }}>TriviaUA 🇺🇦</h1>
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: '6px 12px',
-              borderRadius: '6px',
-              border: '1px solid #475569',
-              backgroundColor: 'transparent',
-              color: '#94a3b8',
-              fontSize: '12px',
-              cursor: 'pointer'
-            }}
-          >
-            Вийти 🚪
-          </button>
-        </div>
-
-        <div style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'center',
-          marginBottom: '20px',
-          paddingBottom: '15px',
-          borderBottom: '1px solid #334155'
-        }}>
-          <span style={{ color: '#94a3b8' }}>Сокет:</span>
-          <span style={{
-            padding: '4px 10px',
-            borderRadius: '12px',
-            fontSize: '12px',
-            fontWeight: 'bold',
-            backgroundColor: isConnected ? 'rgba(34, 197, 94, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-            color: isConnected ? '#4ade80' : '#f87171',
-            border: isConnected ? '1px solid rgba(34, 197, 94, 0.4)' : '1px solid rgba(239, 68, 68, 0.4)'
-          }}>
-            {isConnected ? 'ОНЛАЙН' : 'ОФЛАЙН'}
-          </span>
-        </div>
-
         {gameState ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
-                <span style={{ color: '#94a3b8', fontSize: '12px', display: 'block' }}>ФАЗА ГРИ</span>
-                <span style={{ fontSize: '16px', fontWeight: 'bold', color: '#facc15' }}>
-                  {gameState.status}
-                </span>
-              </div>
+          <UkraineMap
+            mapState={gameState.map_state || {}}
+            players={gameState.players || []}
+            onRegionClick={handleRegionClick}
+          />
+        ) : (
+          <div style={{ color: '#94a3b8' }}>Підключення...</div>
+        )}
+      </div>
 
-              {gameState.timer_seconds > 0 && (
-                <div style={{
-                  backgroundColor: 'rgba(239, 68, 68, 0.1)',
-                  padding: '8px 16px',
+      {gameState && (
+        <>
+          {/* 2. Вертикальна панель гравців (зліва) */}
+          <div style={{
+            position: 'absolute',
+            left: '20px',
+            top: '20px',
+            bottom: '20px',
+            width: '280px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '15px',
+            zIndex: 10 // Поверх мапи
+          }}>
+
+            {/* Статус кімнати та сокету */}
+            <div style={{
+              backgroundColor: 'rgba(30, 41, 59, 0.8)',
+              backdropFilter: 'blur(10px)',
+              padding: '15px',
+              borderRadius: '16px',
+              border: '1px solid #334155'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                <h1 style={{ color: '#38bdf8', margin: 0, fontSize: '20px' }}>TriviaUA</h1>
+                <span style={{
+                  padding: '4px 10px',
                   borderRadius: '12px',
-                  border: '1px solid rgba(239, 68, 68, 0.3)',
-                  textAlign: 'center'
-                }}>
-                  <span style={{ fontSize: '22px', fontWeight: '900', color: '#f87171' }}>
-                    ⏱️ {gameState.timer_seconds}s
-                  </span>
-                </div>
-              )}
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  backgroundColor: isConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                  color: isConnected ? '#4ade80' : '#f87171',
+                  border: isConnected ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
+                }}>{isConnected ? 'ON' : 'OFF'}</span>
+              </div>
+              <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block' }}>ФАЗА</span>
+              <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#facc15' }}>{gameState.status}</span>
             </div>
 
-            {gameState.current_question && (
-              <div style={{
-                backgroundColor: 'rgba(30, 58, 138, 0.2)',
-                padding: '20px',
-                borderRadius: '12px',
-                border: '1px solid rgba(59, 130, 246, 0.3)'
-              }}>
-                <p style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', lineHeight: '1.4' }}>
-                  {gameState.current_question.text}
-                </p>
+            {/* Таблиця гравців */}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+              {gameState.players.map((player: any, index: number) => {
+                const isMyTurn = gameState.current_turn_player_id === player.user_id;
 
-                {gameState.current_question.type === 'CHOICE' && gameState.current_question.options && (
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                    {Object.entries(gameState.current_question.options).map(([key, value]) => (
-                      <button
-                        key={key}
-                        disabled={hasAnswered}
-                        onClick={() => {
-                          setSelectedOption(key);
-                          handleSendAnswer(key);
-                        }}
-                        style={{
-                          padding: '12px',
-                          borderRadius: '8px',
-                          border: '1px solid #475569',
-                          backgroundColor: selectedOption === key ? '#2563eb' : '#334155',
-                          color: '#ffffff',
-                          fontWeight: 'bold',
-                          cursor: hasAnswered ? 'not-allowed' : 'pointer',
-                          opacity: hasAnswered && selectedOption !== key ? 0.5 : 1,
-                          transition: 'all 0.2s'
-                        }}
-                      >
-                        {key}: {value as string}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
-                {gameState.current_question.type === 'NUMBER' && (
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    <input
-                      type="number"
-                      placeholder="Введіть число..."
-                      disabled={hasAnswered}
-                      value={numberAnswer}
-                      onChange={(e) => setNumberAnswer(e.target.value)}
-                      style={{
-                        flex: 1,
-                        padding: '12px',
-                        borderRadius: '8px',
-                        border: '1px solid #475569',
-                        backgroundColor: '#0f172a',
-                        color: '#ffffff',
-                        fontSize: '16px'
-                      }}
-                    />
-                    <button
-                      disabled={hasAnswered || !numberAnswer}
-                      onClick={() => handleSendAnswer(numberAnswer)}
-                      style={{
-                        padding: '12px 20px',
-                        borderRadius: '8px',
-                        border: 'none',
-                        backgroundColor: '#16a34a',
-                        color: '#ffffff',
-                        fontWeight: 'bold',
-                        cursor: (hasAnswered || !numberAnswer) ? 'not-allowed' : 'pointer',
-                        opacity: hasAnswered ? 0.5 : 1
-                      }}
-                    >
-                      Надіслати
-                    </button>
-                  </div>
-                )}
-
-                {hasAnswered && (
-                  <p style={{ textAlign: 'center', color: '#4ade80', marginTop: '15px', fontSize: '14px' }}>
-                    ✓ Відповідь прийнято! Чекаємо на інших...
-                  </p>
-                )}
-              </div>
-            )}
-            {/* Інтерактивна мапа України */}
-<div style={{
-  backgroundColor: '#0f172a',
-  padding: '15px',
-  borderRadius: '12px',
-  border: '1px solid #334155'
-}}>
-  <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
-    КАРТА ТЕРИТОРІЙ
-  </span>
-  <UkraineMap
-    mapState={gameState.map_state || {}}
-    players={gameState.players || []}
-    onRegionClick={(regionId) => {
-      console.log('Клікнули на область:', regionId);
-    }}
-  />
-</div>
-            <div>
-              <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '8px' }}>
-                ТАБЛИЦЯ ГРАВЦІВ
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {gameState.players.map((player: any) => (
+                return (
                   <div key={player.user_id} style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
-                    backgroundColor: 'rgba(51, 65, 85, 0.4)',
-                    padding: '12px',
-                    borderRadius: '8px',
-                    border: '1px solid #334155'
+                    backgroundColor: isMyTurn ? 'rgba(59, 130, 246, 0.3)' : 'rgba(51, 65, 85, 0.8)',
+                    backdropFilter: 'blur(5px)',
+                    padding: '15px',
+                    borderRadius: '12px',
+                    border: `2px solid ${isMyTurn ? '#facc15' : player.color}`, // Золота рамка якщо хід цього гравця
+                    boxShadow: isMyTurn ? '0 0 12px rgba(250, 204, 21, 0.4)' : 'none',
+                    transition: 'all 0.3s'
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <div style={{
-                        width: '12px',
-                        height: '12px',
-                        borderRadius: '50%',
-                        backgroundColor: player.color
-                      }} />
-                      <span style={{ fontWeight: '600' }}>{player.username}</span>
+                      <div style={{ fontSize: '12px', color: '#94a3b8' }}>#{index + 1}</div>
+                      <div>
+                        <span style={{ fontWeight: '700', fontSize: '15px', display: 'block' }}>{player.username}</span>
+                        {isMyTurn && <span style={{ fontSize: '10px', color: '#facc15', fontWeight: 'bold' }}>⚡ ХІД ГРАВЦЯ</span>}
+                      </div>
                     </div>
-                    <span style={{ fontWeight: 'bold', color: '#38bdf8' }}>
-                      {player.score} балів
+                    <span style={{ fontWeight: 'bold', color: player.color, fontSize: '16px' }}>
+                      {player.score} б.
                     </span>
                   </div>
-                ))}
-              </div>
+                );
+              })}
             </div>
 
+            {/* Кнопка виходу (в самому низу) */}
+            <button
+              onClick={handleLogout}
+              style={{
+                marginTop: 'auto',
+                padding: '10px',
+                borderRadius: '8px',
+                border: '1px solid #475569',
+                backgroundColor: 'transparent',
+                color: '#94a3b8',
+                fontSize: '12px',
+                cursor: 'pointer'
+              }}
+            >Вийти 🚪</button>
           </div>
-        ) : (
-          <div style={{ textAlign: 'center', color: '#64748b', padding: '30px 0' }}>
-            Підключення до кімнати...
-          </div>
-        )}
-      </div>
+
+          {/* 3. Блок питання (по центру внизу) */}
+          {gameState.current_question && (
+            <div style={{
+              position: 'absolute',
+              bottom: '40px',
+              left: '320px', // Щоб не наповзати на панель гравців
+              right: '20px',
+              maxWidth: '800px', // Обмежуємо ширину питання
+              margin: '0 auto', // Центруємо в доступному просторі
+              zIndex: 10,
+              backgroundColor: 'rgba(30, 58, 138, 0.8)',
+              backdropFilter: 'blur(10px)',
+              padding: '25px',
+              borderRadius: '16px',
+              border: '1px solid rgba(59, 130, 246, 0.4)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '20px'
+            }}>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <p style={{ fontSize: '20px', fontWeight: '600', margin: 0, lineHeight: '1.4', flex: 1, marginRight: '20px' }}>
+                  {gameState.current_question.text}
+                </p>
+
+                {gameState.timer_seconds > 0 && (
+                  <div style={{
+                    backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                    padding: '8px 16px',
+                    borderRadius: '12px',
+                    border: '1px solid rgba(239, 68, 68, 0.4)',
+                    minWidth: '70px',
+                    textAlign: 'center'
+                  }}>
+                    <span style={{ fontSize: '24px', fontWeight: '900', color: '#f87171' }}>
+                      {gameState.timer_seconds}s
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Варіанти відповіді */}
+              {gameState.current_question.type === 'CHOICE' && gameState.current_question.options && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  {Object.entries(gameState.current_question.options).map(([key, value]) => (
+                    <button
+                      key={key}
+                      disabled={hasAnswered}
+                      onClick={() => {
+                        setSelectedOption(key);
+                        handleSendAnswer(key);
+                      }}
+                      className="option-btn"
+                      style={{
+                        padding: '15px',
+                        borderRadius: '10px',
+                        border: '1px solid #475569',
+                        backgroundColor: selectedOption === key ? '#2563eb' : '#334155',
+                        color: '#ffffff',
+                        fontWeight: 'bold',
+                        fontSize: '15px',
+                        cursor: hasAnswered ? 'not-allowed' : 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      {key}: {value as string}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {gameState.current_question.type === 'NUMBER' && (
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <input
+                    type="number"
+                    placeholder="Введіть число..."
+                    disabled={hasAnswered}
+                    value={numberAnswer}
+                    onChange={(e) => setNumberAnswer(e.target.value)}
+                    style={{
+                      flex: 1,
+                      padding: '15px',
+                      borderRadius: '10px',
+                      border: '1px solid #475569',
+                      backgroundColor: '#0f172a',
+                      color: '#ffffff',
+                      fontSize: '16px'
+                    }}
+                  />
+                  <button
+                    disabled={hasAnswered || !numberAnswer}
+                    onClick={() => handleSendAnswer(numberAnswer)}
+                    style={{
+                      padding: '12px 25px',
+                      borderRadius: '10px',
+                      border: 'none',
+                      backgroundColor: '#16a34a',
+                      color: '#ffffff',
+                      fontWeight: 'bold',
+                      fontSize: '15px',
+                      cursor: (hasAnswered || !numberAnswer) ? 'not-allowed' : 'pointer',
+                    }}
+                  >Надіслати</button>
+                </div>
+              )}
+
+              {hasAnswered && (
+                <p style={{ textAlign: 'center', color: '#4ade80', margin: '5px 0 0 0', fontSize: '14px', fontWeight: 'bold' }}>
+                  ✓ Відповідь прийнято! Чекаємо...
+                </p>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
     </div>
   );
 }

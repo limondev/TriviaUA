@@ -31,14 +31,15 @@ async def websocket_game_endpoint(websocket: WebSocket, room_id: str, token: str
     user_id = user_data["user_id"]
     username = user_data["username"]
 
-    # 1. Підключаємо сокет до транслятора
+    # 1. Підключаємо сокет до транслятора кімнати
     await manager.connect(room_id, user_id, websocket)
 
     # 2. Реєструємо гравця в бізнес-стейті гри
     game_state = await game_manager.add_player_to_game(room_id, user_id, username)
 
-    # Відправляємо особисто цьому гравцю поточний стейт кімнати відразу при вході
-    await websocket.send_json({
+    game_state.status = "CLAIM_TERRITORY" #тест, потім прибрати
+    # 3. ФІКС: БРОДКАСТИМО ОНОВЛЕНИЙ СТАН ВСІМ ГРАВЦЯМ КІМНАТИ
+    await manager.broadcast_to_room(room_id, {
         "action": "room_state",
         "data": game_state.to_dict()
     })
@@ -55,11 +56,22 @@ async def websocket_game_endpoint(websocket: WebSocket, room_id: str, token: str
                 if answer is not None:
                     await game_manager.submit_answer(room_id, user_id, str(answer))
 
+            elif action == "claim_region":
+                region_id = payload.get("region_id")
+                if region_id:
+                    result = await game_manager.claim_region(room_id, user_id, region_id)
+                    if isinstance(result, dict) and "error" in result:
+                        await websocket.send_json({
+                            "action": "error",
+                            "data": {"message": result["error"]}
+                        })
+
     except WebSocketDisconnect:
         # Обробка виходу / дисконекту
         await manager.disconnect(room_id, user_id)
         await game_manager.remove_player_from_game(room_id, user_id)
 
+        # При виході також розсилаємо оновлений стан або повідомлення
         await manager.broadcast_to_room(room_id, {
             "action": "player_left",
             "data": {"username": username, "message": f"Гравець {username} залишив гру."}
