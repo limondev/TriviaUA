@@ -4,45 +4,56 @@ from typing import Dict, List, Any, Optional
 from sqlalchemy import select
 from app.core.database import AsyncSessionLocal
 from app.models.all_models import Question
-from app.services.websocket_maps import manager  # Наш WS-транспорт
+from app.services.websocket_maps import manager
 
+REGION_NAMES = {
+            "UA05": "Вінницька область", "UA07": "Волинська область", "UA09": "Луганська область",
+            "UA12": "Дніпропетровська область", "UA14": "Донецька область", "UA18": "Житомирська область",
+            "UA21": "Закарпатська область", "UA23": "Запорізька область", "UA26": "Івано-Франківська область",
+            "UA30": "Київська область", "UA32": "м. Київ", "UA35": "Кіровоградська область",
+            "UA40": "м. Севастополь", "UA43": "АР Крим", "UA46": "Львівська область",
+            "UA48": "Миколаївська область", "UA51": "Одеська область", "UA53": "Полтавська область",
+            "UA56": "Рівненська область", "UA59": "Сумська область", "UA61": "Тернопільська область",
+            "UA63": "Харківська область", "UA65": "Херсонська область", "UA68": "Хмельницька область",
+            "UA71": "Черкаська область", "UA74": "Чернігівська область", "UA77": "Чернівецька область"
+        }
 
 class GameSession:
     def __init__(self, game_id: str):
         self.game_id: str = game_id
-        # Можливі стани: LOBBY, CLAIM_TERRITORY, QUESTION, FINISHED
+        # Стани: LOBBY, CAPITAL_SELECTION, CLAIM_TERRITORY, PHASE_2_DUEL, QUESTION, FINISHED
         self.status: str = "LOBBY"
-        self.players: List[Dict[str, Any]] = []  # [{"user_id": "...", "username": "...", "score": 0, "color": "..."}]
+        self.players: List[Dict[str, Any]] = []
 
-        # Ініціалізуємо карту України (ISO-коди SimpleMaps: UA05, UA32, UA46 і т.д.)
         self.map_state: Dict[str, Any] = {
-            "UA05": {"owner_id": None, "name": "Вінницька"},
-            "UA07": {"owner_id": None, "name": "Волинська"},
-            "UA09": {"owner_id": None, "name": "Луганська"},
-            "UA12": {"owner_id": None, "name": "Дніпропетровська"},
-            "UA14": {"owner_id": None, "name": "Донецька"},
-            "UA18": {"owner_id": None, "name": "Житомирська"},
-            "UA21": {"owner_id": None, "name": "Закарпатська"},
-            "UA23": {"owner_id": None, "name": "Запорізька"},
-            "UA26": {"owner_id": None, "name": "Івано-Франківська"},
-            "UA30": {"owner_id": None, "name": "Київська"},
-            "UA32": {"owner_id": None, "name": "м. Київ"},
-            "UA35": {"owner_id": None, "name": "Кіровоградська"},
-            "UA40": {"owner_id": None, "name": "м. Севастополь"},
-            "UA43": {"owner_id": None, "name": "АР Крим"},
-            "UA46": {"owner_id": None, "name": "Львівська"},
-            "UA48": {"owner_id": None, "name": "Миколаївська"},
-            "UA51": {"owner_id": None, "name": "Одеська"},
-            "UA53": {"owner_id": None, "name": "Полтавська"},
-            "UA56": {"owner_id": None, "name": "Рівненська"},
-            "UA59": {"owner_id": None, "name": "Сумська"},
-            "UA61": {"owner_id": None, "name": "Тернопільська"},
-            "UA63": {"owner_id": None, "name": "Харківська"},
-            "UA65": {"owner_id": None, "name": "Херсонська"},
-            "UA68": {"owner_id": None, "name": "Хмельницька"},
-            "UA71": {"owner_id": None, "name": "Черкаська"},
-            "UA74": {"owner_id": None, "name": "Чернігівська"},
-            "UA77": {"owner_id": None, "name": "Чернівецька"},
+            "UA05": {"owner_id": None, "is_capital": False},
+            "UA07": {"owner_id": None, "is_capital": False},
+            "UA09": {"owner_id": None, "is_capital": False},
+            "UA12": {"owner_id": None, "is_capital": False},
+            "UA14": {"owner_id": None, "is_capital": False},
+            "UA18": {"owner_id": None, "is_capital": False},
+            "UA21": {"owner_id": None, "is_capital": False},
+            "UA23": {"owner_id": None, "is_capital": False},
+            "UA26": {"owner_id": None, "is_capital": False},
+            "UA30": {"owner_id": None, "is_capital": False},
+            "UA32": {"owner_id": None, "is_capital": False},
+            "UA35": {"owner_id": None, "is_capital": False},
+            "UA40": {"owner_id": None, "is_capital": False},
+            "UA43": {"owner_id": None, "is_capital": False},
+            "UA46": {"owner_id": None, "is_capital": False},
+            "UA48": {"owner_id": None, "is_capital": False},
+            "UA51": {"owner_id": None, "is_capital": False},
+            "UA53": {"owner_id": None, "is_capital": False},
+            "UA56": {"owner_id": None, "is_capital": False},
+            "UA59": {"owner_id": None, "is_capital": False},
+            "UA61": {"owner_id": None, "is_capital": False},
+            "UA63": {"owner_id": None, "is_capital": False},
+            "UA65": {"owner_id": None, "is_capital": False},
+            "UA68": {"owner_id": None, "is_capital": False},
+            "UA71": {"owner_id": None, "is_capital": False},
+            "UA74": {"owner_id": None, "is_capital": False},
+            "UA77": {"owner_id": None, "is_capital": False},
+
         }
 
         self.current_answers: Dict[str, Any] = {}
@@ -50,9 +61,11 @@ class GameSession:
         self.timer_task: Optional[asyncio.Task] = None
         self.timer_seconds: int = 0
         self.current_turn_player_id: Optional[str] = None
+        self.duel_target_region: Optional[str] = None
+        self.defender_id: Optional[str] = None
+        self.last_notification: Optional[str] = None
 
     def to_dict(self) -> dict:
-        """Перетворює стейт гри в чистий словник для відправки по WS"""
         return {
             "game_id": self.game_id,
             "status": self.status,
@@ -60,61 +73,29 @@ class GameSession:
             "map_state": self.map_state,
             "timer_seconds": self.timer_seconds,
             "current_question": self.current_question,
-            "current_turn_player_id": self.current_turn_player_id
+            "current_turn_player_id": self.current_turn_player_id,
+            "duel_target_region": self.duel_target_region,
+            "last_notification": self.last_notification
         }
 
-    def advance_turn(self):
-        """Передає хід наступному гравцю за списком"""
+    def auto_fill_map(self):
+        """Рандомно заповнює решту вільних областей між наявними гравцями"""
         if not self.players:
             return
 
-        player_ids = [p["user_id"] for p in self.players]
+        free_regions = [r for r, d in self.map_state.items() if d["owner_id"] is None]
+        random.shuffle(free_regions)
 
-        if self.current_turn_player_id in player_ids:
-            current_idx = player_ids.index(self.current_turn_player_id)
-            next_idx = (current_idx + 1) % len(player_ids)
-            self.current_turn_player_id = player_ids[next_idx]
-        else:
-            self.current_turn_player_id = player_ids[0]
+        for i, reg in enumerate(free_regions):
+            player = self.players[i % len(self.players)]
+            self.map_state[reg]["owner_id"] = player["user_id"]
+            player["score"] += 100
 
-    def handle_claim_region(self, user_id: str, region_id: str):
-        """Логіка захоплення області всередині конкретної сесії гри"""
-        # 1. Перевірка статусу
-        if self.status not in ["CLAIM_TERRITORY", "LOBBY"]:
-            return {"error": "Зараз не фаза захоплення територій"}
+        self.status = "PHASE_2_DUEL"
 
-        # 2. Перевіряємо хід
-        if self.current_turn_player_id and self.current_turn_player_id != user_id:
-            return {"error": "Зараз хід іншого гравця"}
-
-        # Normalize ID (наприклад "UA-32" -> "UA32")
-        clean_region_id = region_id.replace("-", "")
-
-        # 3. Перевіряємо існування та чи територія вільна
-        if clean_region_id not in self.map_state:
-            self.map_state[clean_region_id] = {"owner_id": None}
-
-        region = self.map_state[clean_region_id]
-        if region.get("owner_id") is not None:
-            return {"error": "Ця територія вже зайнята!"}
-
-        # 4. Захоплюємо територію
-        self.map_state[clean_region_id]["owner_id"] = user_id
-
-        # Нараховуємо бали гравцю (+100 за кожну область)
-        for player in self.players:
-            if player["user_id"] == user_id:
-                player["score"] += 100
-                break
-
-        # 5. ПЕРЕДАЄМО ХІД НАСТУПНОМУ ГРАВЦЮ! 🔄
-        self.advance_turn()
-
-        return {"status": "success", "region_id": clean_region_id, "owner_id": user_id}
 
 class GameManager:
     def __init__(self):
-        # Сховище активних сесій: { room_id: GameSession }
         self.active_games: Dict[str, GameSession] = {}
 
     def get_or_create_game(self, room_id: str) -> GameSession:
@@ -125,12 +106,10 @@ class GameManager:
     async def add_player_to_game(self, room_id: str, user_id: str, username: str):
         game = self.get_or_create_game(room_id)
 
-        # Перевіряємо, чи гравець вже є в грі
         if any(p["user_id"] == user_id for p in game.players):
             return game
 
-        # Призначаємо яскраві кольори для 3 гравців
-        colors = ["#ef4444", "#3b82f6", "#22c55e"]  # Червоний, Синій, Зелений
+        colors = ["#ef4444", "#3b82f6", "#22c55e"]
         player_color = colors[len(game.players) % 3]
 
         game.players.append({
@@ -140,43 +119,188 @@ class GameManager:
             "color": player_color
         })
 
-        # За замовчуванням робимо першого гравця ходячим
         if not game.current_turn_player_id:
             game.current_turn_player_id = user_id
 
-        # Якщо зібралося 2 або 3 гравці — можна стартувати фазу захоплення
         if len(game.players) >= 2 and game.status == "LOBBY":
-            game.status = "CLAIM_TERRITORY"
+            game.status = "CAPITAL_SELECTION"
 
         return game
 
-    async def remove_player_from_game(self, room_id: str, user_id: str):
-        if room_id in self.active_games:
-            game = self.active_games[room_id]
-            game.players = [p for p in game.players if p["user_id"] != user_id]
-
-            if not game.players:
-                if game.timer_task:
-                    game.timer_task.cancel()
-                del self.active_games[room_id]
-
-    async def claim_region(self, room_id: str, user_id: str, region_id: str):
-        """Викликається із сокету в game_ws.py"""
+    async def auto_fill_and_start_duels(self, room_id: str):
+        """Авто-заповнення мапи для швидкого тесту дуелей"""
         game = self.active_games.get(room_id)
-        if not game:
-            return {"error": "Кімнату не знайдено"}
+        if game:
+            if game.timer_task:
+                game.timer_task.cancel()
 
-        # Викликаємо захоплення в сесії гри
-        result = game.handle_claim_region(user_id, region_id)
+            game.auto_fill_map()
 
-        if "error" not in result:
-            # Розсилаємо оновлений стан всім гравцям у кімнаті
             await manager.broadcast_to_room(room_id, {
                 "action": "room_state",
                 "data": game.to_dict()
             })
+            # Запускаємо таймер вибору ходу в дуелях
+            await self.start_turn_timer(room_id)
 
-        return result
+    async def handle_click_region(self, room_id: str, user_id: str, region_id: str):
+        game = self.active_games.get(room_id)
+        if not game:
+            return {"error": "Кімнату не знайдено"}
+
+        clean_id = region_id.replace("-", "")
+
+        # 1. АТАКА В ДУЕЛЯХ (PHASE_2_DUEL)
+        if game.status == "PHASE_2_DUEL":
+            if game.current_turn_player_id != user_id:
+                return {"error": "Зараз не твій хід для атаки!"}
+
+            region = game.map_state.get(clean_id)
+            if not region or region.get("owner_id") == user_id:
+                return {"error": "Не можна атакувати власну область!"}
+
+            # Зупиняємо таймер вибору атаки
+            if game.timer_task:
+                game.timer_task.cancel()
+
+            game.duel_target_region = clean_id
+            game.defender_id = region["owner_id"]
+            game.status = "QUESTION"
+
+            await self.start_duel_question(room_id)
+            return {"status": "attack_started"}
+
+        # 2. КЛІК В ЗАХОПЛЕННІ / ВИБОРІ СТОЛИЦІ
+        elif game.status in ["CAPITAL_SELECTION", "CLAIM_TERRITORY"]:
+            if game.map_state.get(clean_id, {}).get("owner_id") is None:
+                if game.timer_task:
+                    game.timer_task.cancel()
+
+                game.map_state[clean_id]["owner_id"] = user_id
+                if game.status == "CAPITAL_SELECTION":
+                    game.map_state[clean_id]["is_capital"] = True
+
+                for p in game.players:
+                    if p["user_id"] == user_id:
+                        p["score"] += 100
+
+                # Ротація ходу
+                p_ids = [p["user_id"] for p in game.players]
+                curr_idx = p_ids.index(user_id)
+                game.current_turn_player_id = p_ids[(curr_idx + 1) % len(p_ids)]
+
+                await manager.broadcast_to_room(room_id, {
+                    "action": "room_state",
+                    "data": game.to_dict()
+                })
+                await self.start_turn_timer(room_id)
+
+        return {"status": "ok"}
+
+    async def start_turn_timer(self, room_id: str, seconds: int = 15):
+        """Таймер на вибір області або вибір атаки"""
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        if game.timer_task:
+            game.timer_task.cancel()
+
+        game.timer_seconds = seconds
+        game.timer_task = asyncio.create_task(self._turn_timer_loop(room_id))
+
+    async def _turn_timer_loop(self, room_id: str):
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        try:
+            while game.timer_seconds > 0:
+                await manager.broadcast_to_room(room_id, {
+                    "action": "room_state",
+                    "data": game.to_dict()
+                })
+                await asyncio.sleep(1)
+                game.timer_seconds -= 1
+
+            await self.handle_turn_timeout(room_id)
+
+        except asyncio.CancelledError:
+            pass
+
+    async def handle_turn_timeout(self, room_id: str):
+        """Якщо гравець провів 15 секунд і не зробив хід"""
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        p_ids = [p["user_id"] for p in game.players]
+        if game.current_turn_player_id in p_ids:
+            curr_idx = p_ids.index(game.current_turn_player_id)
+            game.current_turn_player_id = p_ids[(curr_idx + 1) % len(p_ids)]
+
+        await manager.broadcast_to_room(room_id, {
+            "action": "room_state",
+            "data": game.to_dict()
+        })
+
+        if game.status in ["CLAIM_TERRITORY", "PHASE_2_DUEL", "CAPITAL_SELECTION"]:
+            await self.start_turn_timer(room_id)
+
+    async def start_duel_question(self, room_id: str):
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        game.current_answers = {}
+
+        async with AsyncSessionLocal() as session:
+            result = await session.execute(select(Question).order_by(Question.id))
+            questions = result.scalars().all()
+            if questions:
+                q = random.choice(questions)
+                game.current_question = {
+                    "id": q.id,
+                    "type": q.type,
+                    "text": q.text,
+                    "options": q.options,
+                    "correct_answer": str(q.correct_answer) if q.correct_answer else "603700"
+                }
+            else:
+                game.current_question = {
+                    "id": 1,
+                    "type": "NUMBER",
+                    "text": "Яка офіційна площа території України у км²?",
+                    "options": None,
+                    "correct_answer": "603700"
+                }
+
+        game.timer_seconds = 15
+
+        if game.timer_task:
+            game.timer_task.cancel()
+
+        game.timer_task = asyncio.create_task(self._question_timer_loop(room_id))
+
+    async def _question_timer_loop(self, room_id: str):
+        """Таймер для відліку 15 секунд під час теми питання"""
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        try:
+            while game.timer_seconds > 0:
+                await manager.broadcast_to_room(room_id, {
+                    "action": "room_state",
+                    "data": game.to_dict()
+                })
+                await asyncio.sleep(1)
+                game.timer_seconds -= 1
+
+            await self.handle_round_timeout(room_id)
+
+        except asyncio.CancelledError:
+            pass
 
     async def submit_answer(self, room_id: str, user_id: str, answer: str):
         game = self.active_games.get(room_id)
@@ -191,44 +315,95 @@ class GameManager:
             "time_left": game.timer_seconds
         }
 
+        # Якщо всі відповіли — достроково завершуємо таймер
         if len(game.current_answers) == len(game.players):
             if game.timer_task:
                 game.timer_task.cancel()
             await self.handle_round_timeout(room_id)
 
     async def handle_round_timeout(self, room_id: str):
-        game = self.active_games[room_id]
-        correct = game.current_question.get("correct_answer") if game.current_question else None
+        game = self.active_games.get(room_id)
+        if not game or not game.current_question:
+            return
 
-        results = []
-        for player in game.players:
-            u_id = player["user_id"]
-            user_ans = game.current_answers.get(u_id)
+        correct_str = str(game.current_question.get("correct_answer", "")).strip()
+        winner_id = None
+        winner_name = None
 
-            is_correct = False
-            points_gained = 0
+        # 1. Визначаємо переможця
+        if game.current_question.get("type") == "NUMBER":
+            try:
+                target = float(correct_str)
+                best_diff = float("inf")
 
-            if user_ans and str(user_ans["answer"]).strip().upper() == str(correct).strip().upper():
-                is_correct = True
-                points_gained = 100 + (user_ans["time_left"] * 10)
-                player["score"] += points_gained
+                for u_id, ans_data in game.current_answers.items():
+                    val = float(ans_data.get("answer", 0))
+                    diff = abs(target - val)
+                    if diff < best_diff:
+                        best_diff = diff
+                        winner_id = u_id
+            except (ValueError, TypeError):
+                pass
+        else:
+            for u_id, ans_data in game.current_answers.items():
+                if str(ans_data.get("answer", "")).strip().upper() == correct_str.upper():
+                    winner_id = u_id
+                    break
 
-            results.append({
-                "username": player["username"],
-                "is_correct": is_correct,
-                "points_gained": points_gained,
-                "total_score": player["score"]
-            })
+        # Знаходимо нікнейм переможця
+        if winner_id:
+            for p in game.players:
+                if p["user_id"] == winner_id:
+                    winner_name = p["username"]
+                    break
 
+        # Назва території
+        target_reg = game.duel_target_region or ""
+        region_name = REGION_NAMES.get(target_reg, "Територія")
+
+        # 2. Формуємо сповіщення та оновлюємо власника
+        if winner_id and target_reg in game.map_state:
+            game.map_state[target_reg]["owner_id"] = winner_id
+
+            for p in game.players:
+                if p["user_id"] == winner_id:
+                    p["score"] += 200
+
+            game.last_notification = f"⚔️ {region_name} перейшла під контроль {winner_name}!"
+        else:
+            game.last_notification = f"🛡️ Атаку на {region_name} було відбито!"
+
+        # 3. Ротація ходу
+        p_ids = [p["user_id"] for p in game.players]
+        if game.current_turn_player_id in p_ids:
+            curr_idx = p_ids.index(game.current_turn_player_id)
+            game.current_turn_player_id = p_ids[(curr_idx + 1) % len(p_ids)]
+
+        game.status = "PHASE_2_DUEL"
+        game.current_question = None
+        game.duel_target_region = None
+        game.defender_id = None
+
+        # 4. Бродкастимо стан
         await manager.broadcast_to_room(room_id, {
-            "action": "round_results",
-            "data": {
-                "correct_answer": correct,
-                "results": results,
-                "players": game.players
-            }
+            "action": "room_state",
+            "data": game.to_dict()
         })
 
+        await self.start_turn_timer(room_id)
 
-# Ініціалізуємо глобальний сервіс
+        asyncio.create_task(self._clear_notification_after_delay(room_id, 4))
+
+    async def _clear_notification_after_delay(self, room_id: str, delay: int):
+        """Очищає last_notification через задану кількість секунд"""
+        await asyncio.sleep(delay)
+        game = self.active_games.get(room_id)
+        if game and game.last_notification:
+            game.last_notification = None
+            # Бродкастимо оновлений стан без сповіщення
+            await manager.broadcast_to_room(room_id, {
+                "action": "room_state",
+                "data": game.to_dict()
+            })
+
 game_manager = GameManager()

@@ -6,7 +6,6 @@ import { UkraineMap } from './components/UkraineMap';
 function App() {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem('access_token'));
 
-  // Режим: 'login' або 'register'
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
 
   const [usernameInput, setUsernameInput] = useState('');
@@ -29,23 +28,20 @@ function App() {
     setNumberAnswer('');
   }, [currentQuestionId]);
 
-  // Обробник кліку по області мапи (оголошуємо ТУТ, у тілі компонента!)
   const handleRegionClick = (regionId: string) => {
-    if (gameState?.status === 'CLAIM_TERRITORY') {
+    if (gameState?.status && gameState.status !== 'LOBBY') {
       sendMessage('claim_region', { region_id: regionId });
     } else {
-      console.log(`Зараз не фаза захоплення. Клікнули на: ${regionId}`);
+      console.log(`У лобі мапа неактивна. Клікнули на: ${regionId}`);
     }
   };
 
-  // Обробник Входу / Реєстрації
   const handleAuth = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(null);
     setSuccessMessage(null);
 
     if (authMode === 'register') {
-      // 1. РЕЄСТРАЦІЯ (JSON)
       try {
         const response = await fetch('http://127.0.0.1:8000/auth/register', {
           method: 'POST',
@@ -74,7 +70,6 @@ function App() {
         setAuthError(err.message || 'Помилка при реєстрації');
       }
     } else {
-      // 2. ВХІД (JSON)
       try {
         const response = await fetch('http://127.0.0.1:8000/auth/login', {
           method: 'POST',
@@ -110,7 +105,6 @@ function App() {
     setHasAnswered(true);
   };
 
-  // --- ЕКРАН АВТОРИЗАЦІЇ ---
   if (!token) {
     return (
       <div style={{
@@ -241,7 +235,6 @@ function App() {
     );
   }
 
-  // --- ІГРОВИЙ ЕКРАН (Full Screen Layout ala Triviador) ---
   return (
     <div style={{
       minHeight: '100vh',
@@ -254,7 +247,7 @@ function App() {
       overflow: 'hidden'
     }}>
 
-      {/* 1. Мапа України - на весь екран по центру */}
+      {/* 1. Мапа України */}
       <div style={{
         position: 'absolute',
         top: '10%',
@@ -265,7 +258,7 @@ function App() {
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 1, // Нижче ніж інтерфейс
+        zIndex: 1,
         opacity: gameState ? 1 : 0.3
       }}>
         {gameState ? (
@@ -281,7 +274,7 @@ function App() {
 
       {gameState && (
         <>
-          {/* 2. Вертикальна панель гравців (зліва) */}
+          {/* 2. Ліва панель */}
           <div style={{
             position: 'absolute',
             left: '20px',
@@ -291,10 +284,9 @@ function App() {
             display: 'flex',
             flexDirection: 'column',
             gap: '15px',
-            zIndex: 10 // Поверх мапи
+            zIndex: 10
           }}>
 
-            {/* Статус кімнати та сокету */}
             <div style={{
               backgroundColor: 'rgba(30, 41, 59, 0.8)',
               backdropFilter: 'blur(10px)',
@@ -314,12 +306,56 @@ function App() {
                   border: isConnected ? '1px solid rgba(34, 197, 94, 0.3)' : '1px solid rgba(239, 68, 68, 0.3)'
                 }}>{isConnected ? 'ON' : 'OFF'}</span>
               </div>
+
               <span style={{ color: '#94a3b8', fontSize: '11px', display: 'block' }}>ФАЗА</span>
               <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#facc15' }}>{gameState.status}</span>
+
+              {gameState.status === 'CLAIM_TERRITORY' && (
+                <div style={{
+                  marginTop: '12px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  backgroundColor: gameState.timer_seconds <= 3 ? 'rgba(239, 68, 68, 0.2)' : 'rgba(51, 65, 85, 0.5)',
+                  border: `1px solid ${gameState.timer_seconds <= 3 ? '#ef4444' : '#475569'}`,
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  transition: 'all 0.2s'
+                }}>
+                  <span style={{ fontSize: '12px', color: '#94a3b8' }}>Час на хід:</span>
+                  <span style={{
+                    fontSize: '16px',
+                    fontWeight: 'bold',
+                    color: gameState.timer_seconds <= 3 ? '#f87171' : '#38bdf8'
+                  }}>
+                    ⏱️ {gameState.timer_seconds}s
+                  </span>
+                </div>
+              )}
             </div>
 
-            {/* Таблиця гравців */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
+            {gameState.status === 'CAPITAL_SELECTION' && (
+              <button
+                onClick={() => sendMessage('auto_fill', {})}
+                style={{
+                  marginTop: '10px',
+                  padding: '10px',
+                  width: '100%',
+                  borderRadius: '8px',
+                  border: 'none',
+                  backgroundColor: '#8b5cf6',
+                  color: '#ffffff',
+                  fontWeight: 'bold',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)'
+                }}
+              >
+                🎲 Авто-заповнити мапу (Дуелі)
+              </button>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
               {gameState.players.map((player: any, index: number) => {
                 const isMyTurn = gameState.current_turn_player_id === player.user_id;
 
@@ -332,7 +368,7 @@ function App() {
                     backdropFilter: 'blur(5px)',
                     padding: '15px',
                     borderRadius: '12px',
-                    border: `2px solid ${isMyTurn ? '#facc15' : player.color}`, // Золота рамка якщо хід цього гравця
+                    border: `2px solid ${isMyTurn ? '#facc15' : player.color}`,
                     boxShadow: isMyTurn ? '0 0 12px rgba(250, 204, 21, 0.4)' : 'none',
                     transition: 'all 0.3s'
                   }}>
@@ -351,7 +387,6 @@ function App() {
               })}
             </div>
 
-            {/* Кнопка виходу (в самому низу) */}
             <button
               onClick={handleLogout}
               style={{
@@ -372,12 +407,12 @@ function App() {
             <div style={{
               position: 'absolute',
               bottom: '40px',
-              left: '320px', // Щоб не наповзати на панель гравців
+              left: '320px',
               right: '20px',
-              maxWidth: '800px', // Обмежуємо ширину питання
-              margin: '0 auto', // Центруємо в доступному просторі
+              maxWidth: '800px',
+              margin: '0 auto',
               zIndex: 10,
-              backgroundColor: 'rgba(30, 58, 138, 0.8)',
+              backgroundColor: 'rgba(30, 58, 138, 0.85)',
               backdropFilter: 'blur(10px)',
               padding: '25px',
               borderRadius: '16px',
@@ -386,7 +421,6 @@ function App() {
               flexDirection: 'column',
               gap: '20px'
             }}>
-
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <p style={{ fontSize: '20px', fontWeight: '600', margin: 0, lineHeight: '1.4', flex: 1, marginRight: '20px' }}>
                   {gameState.current_question.text}
@@ -408,7 +442,6 @@ function App() {
                 )}
               </div>
 
-              {/* Варіанти відповіді */}
               {gameState.current_question.type === 'CHOICE' && gameState.current_question.options && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                   {Object.entries(gameState.current_question.options).map(([key, value]) => (
@@ -478,6 +511,30 @@ function App() {
                   ✓ Відповідь прийнято! Чекаємо...
                 </p>
               )}
+            </div>
+          )}
+
+          {/* 4. ВИСУВНЕ СПОВІЩЕННЯ ПРО РЕЗУЛЬТАТИ ХОДУ (Винесено окремо на самий верх!) */}
+          {gameState.last_notification && (
+            <div style={{
+              position: 'absolute',
+              bottom: '30px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              backgroundColor: 'rgba(15, 23, 42, 0.95)',
+              backdropFilter: 'blur(12px)',
+              border: '2px solid #38bdf8',
+              color: '#ffffff',
+              padding: '14px 28px',
+              borderRadius: '50px',
+              boxShadow: '0 10px 30px rgba(56, 189, 248, 0.3)',
+              zIndex: 100,
+              fontSize: '16px',
+              fontWeight: 'bold',
+              textAlign: 'center',
+              pointerEvents: 'none'
+            }}>
+              {gameState.last_notification}
             </div>
           )}
         </>
