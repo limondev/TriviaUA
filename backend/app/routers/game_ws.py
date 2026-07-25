@@ -20,7 +20,6 @@ async def get_user_from_token(token: str) -> dict:
         pass
     return None
 
-
 @router.websocket("/ws/game/{room_id}")
 async def websocket_game_endpoint(websocket: WebSocket, room_id: str, token: str = Query(...)):
     user_data = await get_user_from_token(token)
@@ -31,13 +30,13 @@ async def websocket_game_endpoint(websocket: WebSocket, room_id: str, token: str
     user_id = user_data["user_id"]
     username = user_data["username"]
 
-    # 1. Підключаємо сокет
+    # 1. СПОЧАТКУ додаємо сокет у WS-менеджер
     await manager.connect(room_id, user_id, websocket)
 
-    # 2. Додаємо гравця у стейт
+    # 2. ПОТІМ додаємо гравця у стейт гри
     game_state = await game_manager.add_player_to_game(room_id, user_id, username)
 
-    # 3. Розсилаємо стан усім гравцям кімнати
+    # 3. Розсилаємо оновлений стейт УСІМ активним сокетам кімнати
     await manager.broadcast_to_room(room_id, {
         "action": "room_state",
         "data": game_state.to_dict()

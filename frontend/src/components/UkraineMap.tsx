@@ -1,4 +1,3 @@
-// frontend/src/components/UkraineMap.tsx
 import React, { useEffect, useState } from 'react';
 
 interface Player {
@@ -7,8 +6,13 @@ interface Player {
   color: string;
 }
 
+interface RegionData {
+  owner_id: string | null;
+  is_capital?: boolean;
+}
+
 interface UkraineMapProps {
-  mapState: Record<string, { owner_id: string | null }>;
+  mapState: Record<string, RegionData>;
   players: Player[];
   onRegionClick?: (regionId: string) => void;
 }
@@ -35,24 +39,43 @@ export const UkraineMap: React.FC<UkraineMapProps> = ({ mapState, players, onReg
     }
   };
 
-  // 3. Генерація динамічних CSS-стилів для фарбування областей у колір гравця
+  // 3. Динамічні CSS-стилі для кольору гравців ТА виділення Замків 🏰
   const generateDynamicStyles = () => {
-    return players
-      .map((player) => {
-        const playerRegions = Object.entries(mapState)
-          .filter(([_, data]) => data.owner_id === player.user_id)
-          .map(([regionId]) => `#${regionId}`);
+    let styles = '';
 
-        if (playerRegions.length === 0) return '';
+    // А) Фарбуємо області гравців
+    players.forEach((player) => {
+      const playerRegions = Object.entries(mapState)
+        .filter(([_, data]) => data.owner_id === player.user_id)
+        .map(([regionId]) => `#${regionId}`);
 
-        return `
+      if (playerRegions.length > 0) {
+        styles += `
           ${playerRegions.join(', ')} {
             fill: ${player.color} !important;
             transition: fill 0.3s ease;
           }
         `;
-      })
-      .join('\n');
+      }
+    });
+
+    // Б) Додаємо золоту неонову рамку для Столиць (Замків) 🏰
+    const capitalRegions = Object.entries(mapState)
+      .filter(([_, data]) => data.is_capital === true)
+      .map(([regionId]) => `#${regionId}`);
+
+    if (capitalRegions.length > 0) {
+      styles += `
+        ${capitalRegions.join(', ')} {
+          stroke: #facc15 !important;
+          stroke-width: 3px !important;
+          stroke-dasharray: 4;
+          filter: drop-shadow(0 0 6px #facc15);
+        }
+      `;
+    }
+
+    return styles;
   };
 
   if (!svgContent) {
@@ -70,10 +93,10 @@ export const UkraineMap: React.FC<UkraineMapProps> = ({ mapState, players, onReg
         svg {
           width: 100% !important;
           height: auto !important;
-          max-height: 380px;
+          max-height: 480px;
         }
         /* Сірий дефолтний колір для нічиїх областей */
-        #features path {
+        #features path, svg path {
           fill: #334155;
           stroke: #0f172a;
           stroke-width: 1px;
@@ -81,7 +104,7 @@ export const UkraineMap: React.FC<UkraineMapProps> = ({ mapState, players, onReg
           transition: all 0.2s ease;
         }
         /* Ховер ефект при наведенні */
-        #features path:hover {
+        #features path:hover, svg path:hover {
           filter: brightness(1.3);
           stroke: #38bdf8 !important;
           stroke-width: 2px !important;

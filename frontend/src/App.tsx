@@ -1,4 +1,3 @@
-// frontend/src/App.tsx
 import { useState, useEffect } from 'react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { UkraineMap } from './components/UkraineMap';
@@ -513,7 +512,93 @@ function App() {
               )}
             </div>
           )}
+            {/* 🏆 МОДАЛЬНИЙ ЕКРАН GAME OVER 🏆 */}
+            {gameState?.status === 'FINISHED' && (
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                backdropFilter: 'blur(16px)',
+                zIndex: 200,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                padding: '20px'
+              }}>
+                <div style={{
+                  backgroundColor: '#1e293b',
+                  border: '2px solid #facc15',
+                  borderRadius: '24px',
+                  padding: '40px',
+                  maxWidth: '480px',
+                  width: '100%',
+                  textAlign: 'center',
+                  boxShadow: '0 25px 50px -12px rgba(250, 204, 21, 0.25)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '20px'
+                }}>
+                  <div style={{ fontSize: '64px', margin: '0 0 -10px 0' }}>🏆</div>
+                  <h2 style={{ color: '#facc15', fontSize: '28px', margin: 0, fontWeight: '900' }}>
+                    ГРА ЗАВЕРШЕНА!
+                  </h2>
+                  <p style={{ color: '#94a3b8', fontSize: '14px', margin: 0 }}>
+                    Підсумкові результати битви за Україну
+                  </p>
 
+                  {/* Список фінальних балів */}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
+                    {[...gameState.players]
+                      .sort((a, b) => b.score - a.score)
+                      .map((player, index) => (
+                        <div key={player.user_id} style={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                          backgroundColor: index === 0 ? 'rgba(250, 204, 21, 0.15)' : '#334155',
+                          border: `1px solid ${index === 0 ? '#facc15' : '#475569'}`,
+                          padding: '14px 20px',
+                          borderRadius: '12px'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <span style={{
+                              fontWeight: 'bold',
+                              fontSize: '18px',
+                              color: index === 0 ? '#facc15' : '#94a3b8'
+                            }}>
+                              #{index + 1}
+                            </span>
+                            <span style={{ fontWeight: 'bold', fontSize: '16px', color: '#fff' }}>
+                              {player.username} {index === 0 && '👑'}
+                            </span>
+                          </div>
+                          <span style={{ fontWeight: 'bold', color: player.color, fontSize: '18px' }}>
+                            {player.score} б.
+                          </span>
+                        </div>
+                      ))}
+                  </div>
+
+                  <button
+                    onClick={() => window.location.reload()}
+                    style={{
+                      marginTop: '15px',
+                      padding: '14px',
+                      borderRadius: '12px',
+                      border: 'none',
+                      backgroundColor: '#2563eb',
+                      color: '#ffffff',
+                      fontWeight: 'bold',
+                      fontSize: '16px',
+                      cursor: 'pointer',
+                      boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)'
+                    }}
+                  >
+                    Нова гра 🔄
+                  </button>
+                </div>
+              </div>
+            )}
           {/* 4. ВИСУВНЕ СПОВІЩЕННЯ ПРО РЕЗУЛЬТАТИ ХОДУ (Винесено окремо на самий верх!) */}
           {gameState.last_notification && (
             <div style={{

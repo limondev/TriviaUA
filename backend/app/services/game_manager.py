@@ -79,17 +79,29 @@ class GameSession:
         }
 
     def auto_fill_map(self):
-        """Рандомно заповнює решту вільних областей між наявними гравцями"""
+        """Рандомно заповнює мапу та призначає першу область кожного гравця Замком 🏰"""
         if not self.players:
             return
 
         free_regions = [r for r, d in self.map_state.items() if d["owner_id"] is None]
         random.shuffle(free_regions)
 
+        # Словник для відстеження, чи отримав гравець свій Замок
+        capitals_assigned = {p["user_id"]: False for p in self.players}
+
         for i, reg in enumerate(free_regions):
             player = self.players[i % len(self.players)]
-            self.map_state[reg]["owner_id"] = player["user_id"]
+            p_id = player["user_id"]
+
+            self.map_state[reg]["owner_id"] = p_id
             player["score"] += 100
+
+            # Перша видана область стає Замком (Столицею) гравця!
+            if not capitals_assigned[p_id]:
+                self.map_state[reg]["is_capital"] = True
+                capitals_assigned[p_id] = True
+            else:
+                self.map_state[reg]["is_capital"] = False
 
         self.status = "PHASE_2_DUEL"
 
@@ -350,36 +362,61 @@ class GameManager:
                     winner_id = u_id
                     break
 
-        # Знаходимо нікнейм переможця
         if winner_id:
             for p in game.players:
                 if p["user_id"] == winner_id:
                     winner_name = p["username"]
                     break
 
-        # Назва території
         target_reg = game.duel_target_region or ""
         region_name = REGION_NAMES.get(target_reg, "Територія")
 
-        # 2. Формуємо сповіщення та оновлюємо власника
+        # 2. Передача території та Захист/Захоплення Столиці (Замку)
         if winner_id and target_reg in game.map_state:
+            old_owner_id = game.map_state[target_reg].get("owner_id")
+            is_capital = game.map_state[target_reg].get("is_capital", False)
+
+            # Переписуємо область на переможця
             game.map_state[target_reg]["owner_id"] = winner_id
 
             for p in game.players:
                 if p["user_id"] == winner_id:
                     p["score"] += 200
 
-            game.last_notification = f"⚔️ {region_name} перейшла під контроль {winner_name}!"
+            # 🏰 ЯКЩО ЦЕ БУВ ЗАМОК (СТОЛИЦЯ) 🏰
+            if is_capital and old_owner_id and old_owner_id != winner_id:
+                # Всі інші території програвшого гравця також переходять переможцю!
+                for reg_id, reg_data in game.map_state.items():
+                    if reg_data.get("owner_id") == old_owner_id:
+                        reg_data["owner_id"] = winner_id
+
+                # Шукаємо ім'я програвшого
+                loser_name = next((p["username"] for p in game.players if p["user_id"] == old_owner_id), "Супротивник")
+                game.last_notification = f"👑 {winner_name} захопив Замок {loser_name} і забрав усі його землі!"
+            else:
+                game.last_notification = f"⚔️ {region_name} перейшла під контроль {winner_name}!"
         else:
             game.last_notification = f"🛡️ Атаку на {region_name} було відбито!"
 
-        # 3. Ротація ходу
-        p_ids = [p["user_id"] for p in game.players]
-        if game.current_turn_player_id in p_ids:
-            curr_idx = p_ids.index(game.current_turn_player_id)
-            game.current_turn_player_id = p_ids[(curr_idx + 1) % len(p_ids)]
+        # 3. ПЕРЕВІРКА НА GAME OVER 🏁
+        # Рахуємо, скільки гравців володіють хоча б однією областю
+        active_owners = set(d["owner_id"] for d in game.map_state.values() if d.get("owner_id") is not None)
 
-        game.status = "PHASE_2_DUEL"
+        if len(active_owners) == 1:
+            # Лишився 1 володар усієї картографії — Кінець Гри!
+            game.status = "FINISHED"
+            winner_user_id = list(active_owners)[0]
+            champ_name = next((p["username"] for p in game.players if p["user_id"] == winner_user_id), "Гравець")
+            game.last_notification = f"🏆 ГРУ ЗАВЕРШЕНО! Переможець: {champ_name}!"
+        else:
+            # Ротація ходу
+            p_ids = [p["user_id"] for p in game.players]
+            if game.current_turn_player_id in p_ids:
+                curr_idx = p_ids.index(game.current_turn_player_id)
+                game.current_turn_player_id = p_ids[(curr_idx + 1) % len(p_ids)]
+
+            game.status = "PHASE_2_DUEL"
+
         game.current_question = None
         game.duel_target_region = None
         game.defender_id = None
@@ -390,9 +427,10 @@ class GameManager:
             "data": game.to_dict()
         })
 
-        await self.start_turn_timer(room_id)
-
-        asyncio.create_task(self._clear_notification_after_delay(room_id, 4))
+        if game.status != "FINISHED":
+            await self.start_turn_timer(room_id)
+        else:
+            asyncio.create_task(self._clear_notification_after_delay(room_id, 8))
 
     async def _clear_notification_after_delay(self, room_id: str, delay: int):
         """Очищає last_notification через задану кількість секунд"""
