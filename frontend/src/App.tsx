@@ -580,18 +580,17 @@ function App() {
                   </div>
 
                   <button
-                    onClick={() => window.location.reload()}
-                    style={{
-                      marginTop: '15px',
-                      padding: '14px',
-                      borderRadius: '12px',
-                      border: 'none',
-                      backgroundColor: '#2563eb',
-                      color: '#ffffff',
-                      fontWeight: 'bold',
-                      fontSize: '16px',
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)'
+                    onClick={() => sendMessage('restart_game', {})}
+                    style={{marginTop: '15px',
+                    padding: '14px',
+                    borderRadius: '12px',
+                    border: 'none',
+                    backgroundColor: '#2563eb',
+                    color: '#ffffff',
+                    fontWeight: 'bold',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 14px rgba(37, 99, 235, 0.4)'
                     }}
                   >
                     Нова гра 🔄

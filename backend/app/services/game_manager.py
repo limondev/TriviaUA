@@ -79,15 +79,18 @@ class GameSession:
         }
 
     def auto_fill_map(self):
-        """Рандомно заповнює мапу та призначає першу область кожного гравця Замком 🏰"""
+        """Рандомно заповнює решту вільних областей між наявними гравцями"""
         if not self.players:
             return
 
+        # 1. ЧІТКО ПЕРЕВІРЯЄМО: хто вже має Столицю на мапі!
+        players_with_capital = set()
+        for reg_data in self.map_state.values():
+            if reg_data.get("is_capital") and reg_data.get("owner_id"):
+                players_with_capital.add(reg_data["owner_id"])
+
         free_regions = [r for r, d in self.map_state.items() if d["owner_id"] is None]
         random.shuffle(free_regions)
-
-        # Словник для відстеження, чи отримав гравець свій Замок
-        capitals_assigned = {p["user_id"]: False for p in self.players}
 
         for i, reg in enumerate(free_regions):
             player = self.players[i % len(self.players)]
@@ -96,10 +99,10 @@ class GameSession:
             self.map_state[reg]["owner_id"] = p_id
             player["score"] += 100
 
-            # Перша видана область стає Замком (Столицею) гравця!
-            if not capitals_assigned[p_id]:
+            # Призначаємо Замок ТІЛЬКИ якщо гравець ще НЕ мав жодного!
+            if p_id not in players_with_capital:
                 self.map_state[reg]["is_capital"] = True
-                capitals_assigned[p_id] = True
+                players_with_capital.add(p_id)
             else:
                 self.map_state[reg]["is_capital"] = False
 
@@ -342,7 +345,7 @@ class GameManager:
         winner_id = None
         winner_name = None
 
-        # 1. Визначаємо переможця
+        # 1. Визначаємо переможця раунду
         if game.current_question.get("type") == "NUMBER":
             try:
                 target = float(correct_str)
@@ -371,39 +374,42 @@ class GameManager:
         target_reg = game.duel_target_region or ""
         region_name = REGION_NAMES.get(target_reg, "Територія")
 
-        # 2. Передача території та Захист/Захоплення Столиці (Замку)
+        # Отримуємо СТАРОГО власника області до підбиття підсумків
+        old_owner_id = game.map_state.get(target_reg, {}).get("owner_id")
+        is_capital = game.map_state.get(target_reg, {}).get("is_capital", False)
+
+        # 2. Логіка зміни власника та формування сповіщення
         if winner_id and target_reg in game.map_state:
-            old_owner_id = game.map_state[target_reg].get("owner_id")
-            is_capital = game.map_state[target_reg].get("is_capital", False)
+            # Якщо переміг НАПАДНИК (нова людина захоплює область):
+            if old_owner_id != winner_id:
+                game.map_state[target_reg]["owner_id"] = winner_id
 
-            # Переписуємо область на переможця
-            game.map_state[target_reg]["owner_id"] = winner_id
+                for p in game.players:
+                    if p["user_id"] == winner_id:
+                        p["score"] += 200
 
-            for p in game.players:
-                if p["user_id"] == winner_id:
-                    p["score"] += 200
+                # Якщо це був Замок 🏰
+                if is_capital and old_owner_id:
+                    for reg_id, reg_data in game.map_state.items():
+                        if reg_data.get("owner_id") == old_owner_id:
+                            reg_data["owner_id"] = winner_id
 
-            # 🏰 ЯКЩО ЦЕ БУВ ЗАМОК (СТОЛИЦЯ) 🏰
-            if is_capital and old_owner_id and old_owner_id != winner_id:
-                # Всі інші території програвшого гравця також переходять переможцю!
-                for reg_id, reg_data in game.map_state.items():
-                    if reg_data.get("owner_id") == old_owner_id:
-                        reg_data["owner_id"] = winner_id
+                    loser_name = next((p["username"] for p in game.players if p["user_id"] == old_owner_id),
+                                      "Супротивник")
+                    game.last_notification = f"👑 {winner_name} захопив Замок {loser_name} і забрав усі його землі!"
+                else:
+                    game.last_notification = f"⚔️ {region_name} перейшла під контроль {winner_name}!"
 
-                # Шукаємо ім'я програвшого
-                loser_name = next((p["username"] for p in game.players if p["user_id"] == old_owner_id), "Супротивник")
-                game.last_notification = f"👑 {winner_name} захопив Замок {loser_name} і забрав усі його землі!"
+            # Якщо переміг ЗАХИСНИК (область залишається у нього):
             else:
-                game.last_notification = f"⚔️ {region_name} перейшла під контроль {winner_name}!"
+                game.last_notification = f"🛡️ {winner_name} успішно відбив атаку на {region_name}!"
         else:
             game.last_notification = f"🛡️ Атаку на {region_name} було відбито!"
 
-        # 3. ПЕРЕВІРКА НА GAME OVER 🏁
-        # Рахуємо, скільки гравців володіють хоча б однією областю
+        # 3. Перевірка на GAME OVER 🏁
         active_owners = set(d["owner_id"] for d in game.map_state.values() if d.get("owner_id") is not None)
 
         if len(active_owners) == 1:
-            # Лишився 1 володар усієї картографії — Кінець Гри!
             game.status = "FINISHED"
             winner_user_id = list(active_owners)[0]
             champ_name = next((p["username"] for p in game.players if p["user_id"] == winner_user_id), "Гравець")
@@ -421,7 +427,7 @@ class GameManager:
         game.duel_target_region = None
         game.defender_id = None
 
-        # 4. Бродкастимо стан
+        # 4. Бродкаст стану
         await manager.broadcast_to_room(room_id, {
             "action": "room_state",
             "data": game.to_dict()
@@ -429,6 +435,7 @@ class GameManager:
 
         if game.status != "FINISHED":
             await self.start_turn_timer(room_id)
+            asyncio.create_task(self._clear_notification_after_delay(room_id, 4))
         else:
             asyncio.create_task(self._clear_notification_after_delay(room_id, 8))
 
@@ -439,6 +446,97 @@ class GameManager:
         if game and game.last_notification:
             game.last_notification = None
             # Бродкастимо оновлений стан без сповіщення
+            await manager.broadcast_to_room(room_id, {
+                "action": "room_state",
+                "data": game.to_dict()
+            })
+
+    async def _turn_timer_loop(self, room_id: str):
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        try:
+            while game.timer_seconds > 0:
+                await manager.broadcast_to_room(room_id, {
+                    "action": "room_state",
+                    "data": game.to_dict()
+                })
+                await asyncio.sleep(1)
+                game.timer_seconds -= 1
+
+            await self.handle_turn_timeout(room_id)
+
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            print(f"🔥 Помилка у циклі таймера: {e}")
+
+    async def restart_game(self, room_id: str):
+        """Скидає стан кімнати для нової гри"""
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        # 1. Скасовуємо асинхронний таймер
+        if game.timer_task:
+            game.timer_task.cancel()
+
+        # 2. Скидаємо мапу до початкового стану (усі 27 областей нічиї)
+        for reg_data in game.map_state.values():
+            reg_data["owner_id"] = None
+            reg_data["is_capital"] = False
+
+        # 3. Скидаємо бали гравців
+        for p in game.players:
+            p["score"] = 0
+
+        # 4. Повертаємо базові параметри
+        game.status = "CAPITAL_SELECTION" if len(game.players) >= 2 else "LOBBY"
+        game.current_question = None
+        game.duel_target_region = None
+        game.defender_id = None
+        game.last_notification = "🔄 Гру скинуто! Оберіть нові Столиці!"
+        game.used_question_ids = []
+
+        if game.players:
+            game.current_turn_player_id = game.players[0]["user_id"]
+
+        # 5. Розсилаємо оновлений чистий стан всім гравцям!
+        await manager.broadcast_to_room(room_id, {
+            "action": "room_state",
+            "data": game.to_dict()
+        })
+
+        if game.status == "CAPITAL_SELECTION":
+            await self.start_turn_timer(room_id)
+
+    async def remove_player_from_game(self, room_id: str, user_id: str):
+        """Видаляє гравця з сесії гри при дисконекті"""
+        game = self.active_games.get(room_id)
+        if not game:
+            return
+
+        # Видаляємо гравця зі списку
+        game.players = [p for p in game.players if p["user_id"] != user_id]
+
+        # Очищаємо його області на мапі (або залишаємо нічиїми)
+        for reg_data in game.map_state.values():
+            if reg_data.get("owner_id") == user_id:
+                reg_data["owner_id"] = None
+                reg_data["is_capital"] = False
+
+        # Якщо черга була цього гравця — передаємо хід наступному
+        if game.current_turn_player_id == user_id and game.players:
+            game.current_turn_player_id = game.players[0]["user_id"]
+
+        # Якщо в кімнаті не лишилося гравців — видаляємо гру з пам'яті
+        if not game.players:
+            if game.timer_task:
+                game.timer_task.cancel()
+            del self.active_games[room_id]
+        else:
+            # Розсилаємо оновлений стан тим, хто залишився
             await manager.broadcast_to_room(room_id, {
                 "action": "room_state",
                 "data": game.to_dict()

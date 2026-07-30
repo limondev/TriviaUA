@@ -62,6 +62,9 @@ async def websocket_game_endpoint(websocket: WebSocket, room_id: str, token: str
             elif action == "auto_fill":
                 await game_manager.auto_fill_and_start_duels(room_id)
 
+            elif action == "restart_game":
+                await game_manager.restart_game(room_id)
+
     except WebSocketDisconnect:
         await manager.disconnect(room_id, user_id)
         await game_manager.remove_player_from_game(room_id, user_id)

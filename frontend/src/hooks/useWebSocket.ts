@@ -1,4 +1,3 @@
-// frontend/src/hooks/useWebSocket.ts
 import { useEffect, useRef, useState, useCallback } from 'react';
 
 interface WebSocketMessage {
@@ -19,41 +18,35 @@ export const useWebSocket = (roomId: string, token: string | null) => {
     wsRef.current = ws;
 
     ws.onopen = () => {
-      console.log('WebSocket: успішно підключено!');
+      console.log('✅ WebSocket: успішно підключено!');
       setIsConnected(true);
     };
 
     ws.onmessage = (event) => {
       try {
         const message: WebSocketMessage = JSON.parse(event.data);
-        console.log('WebSocket отримано:', message);
+        console.log('📩 WebSocket отримано:', message);
 
         switch (message.action) {
-         case 'room_state':
-  case 'game_started':
-    setGameState(message.data);
-    break;
-  case 'timer_tick':
-    setGameState((prevState: any) => {
-      if (!prevState) return null;
-      return {
-        ...prevState,
-        timer_seconds: message.data.timer_seconds,
-      };
-    });
-    break;
-  case 'round_results':
-    // При отриманні результатів раунду оновлюємо рахунок гравців у стейті
-    setGameState((prevState: any) => {
-      if (!prevState) return null;
-      return {
-        ...prevState,
-        players: message.data.players,
-      };
-    });
-    break;
-  default:
-    break;
+          case 'room_state':
+          case 'game_started':
+            // Завжди оновлюємо ПОВНИЙ стан гри!
+            setGameState({ ...message.data });
+            break;
+
+          case 'timer_tick':
+            // Зберігаємо ВСІ поля prevState, змінюючи лише секундний таймер
+            setGameState((prevState: any) => {
+              if (!prevState) return null;
+              return {
+                ...prevState,
+                timer_seconds: message.data.timer_seconds,
+              };
+            });
+            break;
+
+          default:
+            break;
         }
       } catch (error) {
         console.error('Помилка парсингу WebSocket повідомлення:', error);
@@ -61,11 +54,11 @@ export const useWebSocket = (roomId: string, token: string | null) => {
     };
 
     ws.onerror = (error) => {
-      console.error('WebSocket помилка:', error);
+      console.error('⚠️ WebSocket помилка:', error);
     };
 
     ws.onclose = () => {
-      console.log('WebSocket: з’єднання закрите.');
+      console.log('❌ WebSocket: з’єднання закрите.');
       setIsConnected(false);
     };
 

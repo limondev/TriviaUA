@@ -34,13 +34,16 @@ class ConnectionManager:
     async def broadcast_to_room(self, room_id: str, message: dict):
         """Відправити повідомлення ВСІМ учасникам конкретної кімнати"""
         if room_id in self.active_rooms:
-            for user_id, websocket in self.active_rooms[room_id].items():
+            # Створюємо копію списку сокетів, щоб уникнути RuntimeError під час ітерації
+            active_sockets = list(self.active_rooms[room_id].items())
+
+            for user_id, websocket in active_sockets:
                 try:
                     await websocket.send_json(message)
-                except Exception:
-                    # Якщо хтось відвалився, але сокет ще не закрився — ігноруємо,
-                    # метод disconnect підчистить це пізніше
-                    pass
+                except Exception as e:
+                    print(f"Помилка відправки сокету {user_id}: {e}")
+                    # Безпечно видаляємо мертвий сокет
+                    await self.disconnect(room_id, user_id)
 
 
 # Створюємо єдиний екземпляр менеджера для всього додатка
